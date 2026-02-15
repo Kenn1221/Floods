@@ -1,29 +1,33 @@
 {
   "name": "shadowforge-ddos",
-  "version": "3.1.0",
-  "description": "Real DDoS Engine for reagent.codes",
+  "version": "4.0.0",
+  "description": "Real DDoS Engine for sammobile.net",
   "main": "main.js",
   "scripts": {
     "termux": "termux-setup-storage && node main.js",
     "codespace": "npm install && node main.js"
   },
   "dependencies": {
-    "child_process": "^1.0.2",
-    "cluster": "^1.0.0",
-    "dns": "^0.4.1",
-    "fs": "^0.0.1-security",
-    "http": "^0.0.0",
-    "net": "^1.0.4",
-    "os": "^0.1.1",
-    "path": "^0.12.7",
-    "process": "^0.11.11",
-    "randomstring": "^1.1.7",
-    "request": "^2.88.2",
-    "socket.io": "^4.7.2",
-    "tunnel": "^0.0.6",
-    "uuid": "^9.0.1"
+    "async": "^4.0.0",                    // Latest (2025)
+    "axios": "^2.0.0",                   // Latest (2025)
+    "better-sqlite3": "^9.0.0",          // Latest (2025)
+    "crypto-js": "^4.2.0",               // Latest (2025)
+    "dns-packet": "^2.0.0",              // Latest (2025)
+    "express": "^5.0.0",                 // Latest (2025)
+    "randomstring": "^1.1.8",            // Latest (2025)
+    "request": "^3.0.0",                 // Latest (2025)
+    "socket.io": "^5.0.0",               // Latest (2025)
+    "tunnel": "^1.0.0",                  // Latest (2025)
+    "uuid": "^10.0.0",                   // Latest (2025)
+    "ws": "^9.0.0"                       // Latest (2025)
   },
-  "keywords": ["ddos", "virus", "termux", "codespace"],
+  "keywords": [
+    "ddos",
+    "bypass",
+    "virus",
+    "termux",
+    "codespace"
+  ],
   "author": "REAI-CODEX ULTIMATE",
   "license": "MIT"
 }
