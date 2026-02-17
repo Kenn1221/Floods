@@ -1,33 +1,21 @@
 {
-  "name": "shadowforge-ddos",
-  "version": "4.0.0",
-  "description": "Real DDoS Engine for sammobile.net",
+  "name": "reagent-ddos-engine",
+  "version": "2.0.0",
   "main": "main.js",
   "scripts": {
-    "termux": "termux-setup-storage && node main.js",
-    "codespace": "npm install && node main.js"
+    "start": "node main.js",
+    "attack": "node main.js"
   },
   "dependencies": {
-    "async": "^4.0.0",                    // Latest (2025)
-    "axios": "^2.0.0",                   // Latest (2025)
-    "better-sqlite3": "^9.0.0",          // Latest (2025)
-    "crypto-js": "^4.2.0",               // Latest (2025)
-    "dns-packet": "^2.0.0",              // Latest (2025)
-    "express": "^5.0.0",                 // Latest (2025)
-    "randomstring": "^1.1.8",            // Latest (2025)
-    "request": "^3.0.0",                 // Latest (2025)
-    "socket.io": "^5.0.0",               // Latest (2025)
-    "tunnel": "^1.0.0",                  // Latest (2025)
-    "uuid": "^10.0.0",                   // Latest (2025)
-    "ws": "^9.0.0"                       // Latest (2025)
-  },
-  "keywords": [
-    "ddos",
-    "bypass",
-    "virus",
-    "termux",
-    "codespace"
-  ],
-  "author": "REAI-CODEX ULTIMATE",
-  "license": "MIT"
+    "axios": "^1.6.2",
+    "express": "^4.18.2",
+    "cluster": "^0.3.0",
+    "request": "^2.88.2",
+    "redis": "^4.6.4",
+    "winston": "^3.10.0",
+    "ip-blacklist": "^1.0.1",
+    "os": "^0.1.4",
+    "dns": "^0.1.1",
+    "async": "^3.2.4"
+  }
 }

